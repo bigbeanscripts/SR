@@ -1,0 +1,773 @@
+-- Super Rebirth
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/Main.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "Super Rebirth",
+    SubTitle = "By Bean Hub",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl,
+})
+
+local Tabs = {
+    SuperRB = Window:AddTab({ Title = "Super Rebirths", Icon = "star" })
+}
+
+-- Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local PetTeamServiceRF = ReplicatedStorage.Packages.Knit.Services.PetTeamService.RF:FindFirstChild("getTeams")
+local PetTeamServiceRE = ReplicatedStorage.Packages.Knit.Services.PetTeamService.RE
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local ArmWrestleService = ReplicatedStorage.Packages.Knit.Services.ArmWrestleService.RE
+local ClickService = ReplicatedStorage.Packages.Knit.Services.ArmWrestleService
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Create the button dynamically
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = playerGui
+
+-- Variables
+local teamData = {}
+local uniqueTeamNames = {}
+local selectedStrengthTeam = nil
+local selectedWinsTeam = nil
+local stopLoop = false
+
+Variables = {
+    lastTeamEquip = 0,
+    equipInterval = 3,
+    hasEnteredZone6 = false,
+    lastBossFight = 0,
+    isCurrentlyFighting = false,
+    rebirthCount = 0,
+    requiredRebirths = 40,
+    hasCompletedSequence = false,
+    hasCompletedZone2Teleport = false,
+    hasCompletedZone3Teleport = false,
+    hasCompletedZone4Teleport = false,
+    requiredRebirths = {
+        postZone3 = 40,
+        preSuperRebirth = 70,
+        hasCompletedSuperRebirth = false,    
+        hasCompletedZone7Setup = false
+    }
+}
+
+
+local BossProgress = {
+    kills = {
+        Champion = 0,
+        RogueAi = 0,
+        MutantKing = 0,
+        KrakenBoss = 0,
+        TribeLeader = 0,
+        Hazmat = 0,
+        Mammoth = 0,
+        Udzal = 0,
+        Noob = 0
+    },
+    required = {
+        Champion = 1,
+        RogueAi = 2,
+        KrakenBoss = 1,
+        Hazmat = 5,
+        MutantKing = 5,
+        TribeLeader = 5,
+        Mammoth = 5,
+        Udzal = 1,
+        Noob = 5
+    }
+}
+-- Button Setup
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0, 200, 0, 50)
+button.Position = UDim2.new(0.5, -100, 0.5, -25)
+button.Text = "Click Me!"
+button.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+button.Parent = screenGui
+button.BackgroundTransparency = 1
+button.TextTransparency = 1
+button.Visible = false
+button.ZIndex = -4
+
+local function onButtonClick()
+    if ArmWrestleService and ArmWrestleService.onClickRequest then
+        ArmWrestleService.onClickRequest:FireServer()
+    end
+end
+
+button.MouseButton1Click:Connect(onButtonClick)
+
+-- Match tracking
+local matchJustFinished = false
+ArmWrestleService.onArmWrestleFinished.OnClientEvent:Connect(function()
+    matchJustFinished = true
+    Variables.isCurrentlyFighting = false
+end)
+
+
+local function performRebirth()
+    ReplicatedStorage.Packages.Knit.Services.RebirthService.RE.onRebirthRequest:FireServer()
+end
+
+local function teleportToZone1()
+    local args = {
+        [1] = workspace.Zones:FindFirstChild("1").Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+end
+
+local function teleportToZone5()
+    local args = {
+        [1] = workspace.Zones:FindFirstChild("5").Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+end
+
+-- Core Functions
+local function teleportToZone2()
+    local args = {
+        [1] = workspace.Zones:FindFirstChild("2").Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+end
+
+local function teleportToZone3()
+    local args = {
+        [1] = workspace.Zones:FindFirstChild("3").Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+end
+
+local function teleportToZone4()
+    local args = {
+        [1] = workspace.Zones:FindFirstChild("4").Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+end
+
+-- Add new teleport functions
+local function teleportToZone6()
+    local args = {
+        [1] = workspace.Zones:FindFirstChild("6").Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+end
+
+
+local function setZombieTrainer()
+    local args = {
+        [1] = "Zombie"
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.TrainerService.RF.SetTrainer:InvokeServer(unpack(args))
+end
+
+local function teleportToZone7()
+    local args = {
+        [1] = workspace.Zones:FindFirstChild("7").Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+end
+
+local function setDominusLordTrainer()
+    local args = {
+        [1] = "Dominus Lord"
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.TrainerService.RF.SetTrainer:InvokeServer(unpack(args))
+end
+
+local function purchasePlasmaTrail()
+    local args = {
+        [1] = "Trails",
+        [2] = "Plasma"
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.PurchaseService.RE.onPurchaseRequest:FireServer(unpack(args))
+end
+
+
+local function purchaseMidnightTrail()
+    local args = {
+        [1] = "Trails",
+        [2] = "Midnight"
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.PurchaseService.RE.onPurchaseRequest:FireServer(unpack(args))
+end
+
+local function performRebirths(count)
+    for i = 1, count do
+        ReplicatedStorage.Packages.Knit.Services.RebirthService.RE.onRebirthRequest:FireServer()
+        Variables.rebirthCount = Variables.rebirthCount + 1
+        wait(0.25)
+    end
+end
+
+local function resetProgress()
+    -- Reset boss tracking
+    BossProgress = {
+        kills = {
+            Champion = 0,
+            RogueAi = 0,
+            MutantKing = 0,
+            KrakenBoss = 0,
+            TribeLeader = 0,
+            Hazmat = 0,
+            Mammoth = 0
+        },
+        required = {
+            Champion = 1,
+            RogueAi = 2,
+            KrakenBoss = 1,
+            Hazmat = 5,
+            MutantKing = 5,
+            TribeLeader = 5,
+            Mammoth = 5
+        }
+    }
+    
+    -- Reset all variables in one place
+    Variables = {
+        lastTeamEquip = 0,
+        equipInterval = 5,
+        lastBossFight = 0,
+        isCurrentlyFighting = false,
+        rebirthCount = 0,
+        hasCompletedSequence = false,
+        hasCompletedZone2Teleport = false,
+        hasCompletedZone3Teleport = false,
+        hasCompletedZone4Teleport = false,
+        hasCompletedSuperRebirth = false,
+        requiredRebirths = {
+            postZone3 = 40,
+            preSuperRebirth = 70
+        }
+    }
+    
+    -- Return to starting zone
+    wait(1)
+    teleportToZone1()
+    wait(2)
+    
+    -- Return starting boss config
+    return {
+        strength = 750000,
+        npc = {name = "Champion", location = "1"}
+    }
+end
+
+local function equipTeam(teamId)
+    local args = {
+        [1] = teamId
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.PetTeamService.RE.onEquipTeam:FireServer(unpack(args))
+end
+
+local function performArmWrestle(npc)
+    local args = {
+        [1] = npc.name,
+        [2] = workspace.GameObjects.ArmWrestling:FindFirstChild(npc.location).NPC[npc.name].Table,
+        [3] = npc.location
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RE.onEnterNPCTable:FireServer(unpack(args))
+end
+
+
+-- Update getThresholdAndNPC function
+local function getThresholdAndNPC()
+    local superRBTokens = LocalPlayer:GetAttribute("SuperRBTokens") or 0
+    local totalStrength = LocalPlayer:GetAttribute("TotalStrength") or 0
+    
+    -- Early Game Progression
+    if totalStrength >= 750000 and BossProgress.kills.Champion < BossProgress.required.Champion then
+        return {
+            strength = 750000,
+            npc = {name = "Champion", location = "1"}
+        }
+    end
+    
+    -- RogueAi Progression
+    if BossProgress.kills.Champion >= BossProgress.required.Champion and 
+       BossProgress.kills.RogueAi < BossProgress.required.RogueAi then
+        return {
+            strength = 90000000000,
+            npc = {name = "RogueAi", location = "2"}
+        }
+    end
+
+    -- Kraken Progression
+    if BossProgress.kills.RogueAi >= BossProgress.required.RogueAi and
+       BossProgress.kills.KrakenBoss < BossProgress.required.KrakenBoss then
+        return {
+            strength = 5 * 10^15,
+            npc = {name = "KrakenBoss", location = "3"}
+        }
+    end
+
+    -- Late Game Progression
+    if BossProgress.kills.KrakenBoss >= BossProgress.required.KrakenBoss then
+        -- Zone 4 Teleport
+        if not Variables.hasCompletedZone4Teleport then
+            teleportToZone4()
+            Variables.hasCompletedZone4Teleport = true
+            wait(1)
+        end
+
+        -- Token-based Progression
+        if superRBTokens <= 15 then
+            return {
+                strength = 14 * 10^15,
+                npc = {name = "Hazmat", location = "4"}
+            }
+        elseif superRBTokens <= 25 then
+            return { 
+                strength = 400 * 10^15,
+                npc = {name = "MutantKing", location = "4"}
+            }
+        elseif superRBTokens <= 65 then
+            -- MutantKing Check
+            if BossProgress.kills.MutantKing < 1 then
+                return {
+                    strength = 400 * 10^15,
+                    npc = {name = "MutantKing", location = "4"}
+                }
+            end
+
+            -- Zone 5 Teleport
+            if not Variables.hasCompletedZone5Teleport then
+                teleportToZone5()
+                Variables.hasCompletedZone5Teleport = true
+                wait(1)
+            end
+
+            return {
+                strength = 2 * 10^18,
+                npc = {name = "TribeLeader", location = "5"}
+            }
+        else -- superRBTokens > 65
+            -- Initial Mammoth Check
+            if BossProgress.kills.Mammoth < 1 then
+                if not Variables.hasCompletedZone5Teleport then
+                    teleportToZone5()
+                    Variables.hasCompletedZone5Teleport = true
+                    wait(1)
+                end
+                return {
+                    strength = 7 * 10^18,
+                    npc = {name = "Mammoth", location = "5"}
+                }
+            end
+        end
+
+        -- Zone 6 Teleport and Udzal
+        if not Variables.hasCompletedZone6Teleport and BossProgress.kills.Mammoth >= 1 then
+            teleportToZone6()
+            Variables.hasCompletedZone6Teleport = true
+            Variables.hasEnteredZone6 = true
+            wait(1)
+            
+            if selectedStrengthTeam and teamData[selectedStrengthTeam] then
+                equipTeam(teamData[selectedStrengthTeam].Id)
+            end
+            Variables.lastTeamEquip = tick()
+        end
+        
+        if Variables.hasEnteredZone6 then
+            -- Zone 6 strength team equip logic
+            if totalStrength >= 6 * 10^21 then
+                local playerWins = LocalPlayer:GetAttribute("Wins") or 0
+                if playerWins < 5e25 and not Variables.hasCompletedZone7Setup then
+                    return {
+                        strength = 6 * 10^21,
+                        npc = {name = "Udzal", location = "6"}
+                    }
+                end
+
+                -- Zone 7 teleport after reaching wins target
+                if playerWins >= 5e25 and not Variables.hasCompletedZone7Teleport then
+                    teleportToZone7()
+                    Variables.hasCompletedZone7Teleport = true
+                    Variables.hasCompletedZone7Setup = true
+                    wait(1)
+                    setDominusLordTrainer() 
+                    purchasePlasmaTrail()
+                end
+
+                -- Noob progression after Zone 7
+                if Variables.hasCompletedZone7Setup then
+                    return {
+                        strength = 5 * 10^24,
+                        npc = {name = "Noob", location = "8"}
+                    }
+                end
+            end
+        end
+    end
+    
+    return {
+        strength = 750000,
+        npc = {name = "Champion", location = "1"}
+    }
+end
+-- Fetch Team Data Function
+local function fetchTeamData()
+    if PetTeamServiceRF and PetTeamServiceRF:IsA("RemoteFunction") then
+        local success, data = pcall(function()
+            return PetTeamServiceRF:InvokeServer()
+        end)
+        
+        if success and type(data) == "table" then
+            teamData = {}
+            uniqueTeamNames = {}
+            
+            for teamName, teamInfo in pairs(data) do
+                teamData[teamInfo.Name] = {
+                    Id = teamName,
+                    Name = teamInfo.Name
+                }
+                if not table.find(uniqueTeamNames, teamInfo.Name) then
+                    table.insert(uniqueTeamNames, teamInfo.Name)
+                end
+            end
+            
+            table.sort(uniqueTeamNames)
+            StrengthTeamDropdown:SetValues(uniqueTeamNames)
+            WinsTeamDropdown:SetValues(uniqueTeamNames)
+            return true
+        end
+    end
+    return false   
+end
+
+-- UI Elements
+local SuperRBSection = Tabs.SuperRB:AddSection("Auto Rebirth")
+local TeamSection = Tabs.SuperRB:AddSection("Super Rebirths") 
+local StatusSection = Tabs.SuperRB:AddSection("Status")
+
+local StatusParagraph = StatusSection:AddParagraph({
+    Title = "Current Status",
+    Content = "Waiting to start..."
+})
+
+local AutoRebirthToggle = SuperRBSection:AddToggle("AutoRebirth", {
+    Title = "Auto Rebirth",
+    Description = "Automatically rebirth",
+    Default = false
+})
+
+local Paragraph = TeamSection:AddParagraph({
+    Title = "Read before Use",
+    Content = "For super rebirths to work, you need to have something selected for the strength/wins teams. It doesnt matter if its the same one, but its needed. Also use your % bost arm (e.g. 10320%) for the best results. This is new, so truthfully its a little slow and can be improved overtime. The wins team only has an affect in world 6. FInally the status sometimes takes a while to update, but the script will still work.",
+})
+
+local StrengthTeamDropdown = TeamSection:AddDropdown("StrengthTeam", {
+    Title = "Strength Team",
+    Description = "Select team to grind strength",
+    Values = uniqueTeamNames,
+    Multi = false
+})
+
+local WinsTeamDropdown = TeamSection:AddDropdown("WinsTeam", {
+    Title = "Wins Team",
+    Description = "Select a team for wins",
+    Values = uniqueTeamNames,
+    Multi = false
+})
+
+local AutoGrindToggle = TeamSection:AddToggle("AutoGrind", {
+    Title = "Auto Grind Super Rebirths",
+    Description = "Automatically grinds super rebirths",
+    Default = false
+})
+-- Event Handlers  
+AutoRebirthToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while AutoRebirthToggle.Value do
+                performRebirth()
+                wait(0.25)
+            end
+        end)
+    end
+end)
+
+
+local function performArmWrestle(npc)
+    -- Add error checking for npc parameters
+    if not npc or not npc.name or not npc.location then
+        warn("Invalid NPC data provided")
+        return
+    end
+
+    -- Get NPC table with proper path resolution
+    local armWrestlingFolder = workspace.GameObjects.ArmWrestling
+    local zoneFolder = armWrestlingFolder:FindFirstChild(npc.location)
+    
+    if not zoneFolder then
+        warn("Zone folder not found:", npc.location)
+        return
+    end
+
+    local npcFolder = zoneFolder:FindFirstChild("NPC")
+    if not npcFolder then
+        warn("NPC folder not found in zone:", npc.location)
+        return
+    end
+
+    local npcModel = npcFolder:FindFirstChild(npc.name)
+    if not npcModel or not npcModel:FindFirstChild("Table") then
+        warn("NPC or Table not found:", npc.name)
+        return
+    end
+
+    -- Construct and send remote args
+    local args = {
+        [1] = npc.name,
+        [2] = npcModel.Table,
+        [3] = npc.location
+    }
+
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RE.onEnterNPCTable:FireServer(unpack(args))
+end
+
+-- Update dropdown handlers
+StrengthTeamDropdown:OnChanged(function(value)
+    selectedStrengthTeam = value
+    if selectedStrengthTeam and teamData[selectedStrengthTeam] then
+        print("Selected Strength Team ID:", teamData[selectedStrengthTeam].Id)
+        equipTeam(teamData[selectedStrengthTeam].Id)
+    end
+end)
+
+WinsTeamDropdown:OnChanged(function(value)
+    selectedWinsTeam = value
+    if selectedWinsTeam and teamData[selectedWinsTeam] then
+        print("Selected Wins Team ID:", teamData[selectedWinsTeam].Id)
+        equipTeam(teamData[selectedWinsTeam].Id)
+    end
+end)
+
+
+
+AutoGrindToggle:OnChanged(function(value)
+    stopLoop = not value
+    if value then
+        spawn(function()
+            while AutoGrindToggle.Value and not stopLoop do
+                if Variables.isCurrentlyFighting then
+                    onButtonClick()
+                end
+                wait(0.1)
+            end
+        end)
+        
+        -- Main grinding spawn
+        spawn(function()
+            while AutoGrindToggle.Value and not stopLoop do
+                local currentTime = tick()
+                local totalStrength = LocalPlayer:GetAttribute("TotalStrength") or 0
+                local superRBTokens = LocalPlayer:GetAttribute("SuperRBTokens") or 0
+                local config = getThresholdAndNPC()
+                                
+                -- Team equipment logic
+                if currentTime - Variables.lastTeamEquip >= Variables.equipInterval then
+                if Variables.hasEnteredZone6 and not Variables.hasCompletedZone7Setup then
+                    -- Special handling for Udzal
+                    if config.npc.name == "Udzal" and totalStrength >= 6 * 10^21 then
+                        -- Equip wins team when strong enough for Udzal
+                        if selectedWinsTeam and teamData[selectedWinsTeam] then
+                            equipTeam(teamData[selectedWinsTeam].Id)
+                        end
+                    else
+                        -- Otherwise use strength team for training
+                        if selectedStrengthTeam and teamData[selectedStrengthTeam] then
+                            equipTeam(teamData[selectedStrengthTeam].Id)
+                        end
+                    end
+                else
+                    -- Normal team switching logic for other zones
+                    if totalStrength < config.strength then
+                        if selectedStrengthTeam and teamData[selectedStrengthTeam] then
+                            equipTeam(teamData[selectedStrengthTeam].Id)
+                        end
+                    else
+                        if selectedWinsTeam and teamData[selectedWinsTeam] then
+                            equipTeam(teamData[selectedWinsTeam].Id)
+                        end
+                    end
+                end
+                Variables.lastTeamEquip = currentTime
+            end
+
+                -- Zone 3 sequence
+                if BossProgress.kills.RogueAi >= 2 and not Variables.hasCompletedZone3Teleport then
+                    wait(1.5)
+                    teleportToZone3()
+                    Variables.hasCompletedZone3Teleport = true
+                    wait(1.5)
+                    setZombieTrainer()
+                    purchaseMidnightTrail()
+                    performRebirths(15)
+                end
+
+                -- Boss fight logic
+                if totalStrength >= config.strength then
+                    -- Special handling for Udzal
+                    if config.npc.name == "Udzal" then
+                        if selectedWinsTeam and teamData[selectedWinsTeam] then
+                            local playerWins = LocalPlayer:GetAttribute("Wins") or 0
+                            if playerWins < 5e25 then
+                                local percentage = (playerWins / 5e25) * 100
+                                StatusParagraph:SetDesc(string.format("Fighting Udzal - Wins: %.2e/%.2e (%.2f%%)", 
+                                    playerWins, 5e25, percentage))
+                                
+                                Variables.isCurrentlyFighting = true
+                                performArmWrestle(config.npc)
+                                
+                                repeat wait() until matchJustFinished
+                                matchJustFinished = false
+                                Variables.isCurrentlyFighting = false
+                                wait(1)
+                            end
+                        end
+
+                    elseif config.npc.name == "Noob" and Variables.hasCompletedZone7Setup then
+                        if selectedWinsTeam and teamData[selectedWinsTeam] then
+                            StatusParagraph:SetDesc(string.format("Fighting Noob (%d/5)", 
+                                BossProgress.kills.Noob or 0))
+                            
+                            Variables.isCurrentlyFighting = true
+                            performArmWrestle(config.npc)
+                            
+                            repeat wait() until matchJustFinished
+                            matchJustFinished = false
+                            BossProgress.kills.Noob = (BossProgress.kills.Noob or 0) + 1
+                            Variables.isCurrentlyFighting = false
+                            
+                            if BossProgress.kills.Noob >= 5 then
+                                StatusParagraph:SetDesc("Performing rebirths before Super Rebirth...")
+                                performRebirths(115)
+                                wait(1)
+                                
+                                StatusParagraph:SetDesc("Executing Super Rebirth...")
+                                ReplicatedStorage.Packages.Knit.Services.RebirthService.RE.onSuperRebirth:FireServer()
+                                wait(1)
+                                
+                                StatusParagraph:SetDesc("Resetting progress...")
+                                resetProgress()
+                                
+                                AutoGrindToggle:SetValue(false)
+                                wait(3)
+                                AutoGrindToggle:SetValue(true)
+                            end
+                            wait(1)
+                        end
+                    -- Normal boss handling
+                    elseif BossProgress.kills[config.npc.name] < BossProgress.required[config.npc.name] then
+                        if selectedWinsTeam and teamData[selectedWinsTeam] then
+                            StatusParagraph:SetDesc(string.format("Fighting %s (%d/%d)", 
+                                config.npc.name, BossProgress.kills[config.npc.name], BossProgress.required[config.npc.name]))
+                            
+                            Variables.isCurrentlyFighting = true
+                            performArmWrestle(config.npc)
+                            
+                            repeat wait() until matchJustFinished
+                            matchJustFinished = false
+                            BossProgress.kills[config.npc.name] = BossProgress.kills[config.npc.name] + 1
+                            Variables.isCurrentlyFighting = false
+                            
+                            if BossProgress.kills[config.npc.name] >= BossProgress.required[config.npc.name] then
+                                local isTargetBoss = (superRBTokens <= 15 and config.npc.name == "Hazmat" and BossProgress.kills.Hazmat >= 5) or
+                                                   (superRBTokens <= 25 and config.npc.name == "MutantKing" and BossProgress.kills.MutantKing >= 5) or
+                                                   (superRBTokens <= 65 and config.npc.name == "TribeLeader" and BossProgress.kills.TribeLeader >= 5) or
+                                                   (superRBTokens > 65 and totalStrength < 5 * 10^24 and config.npc.name == "Mammoth") or
+                                                   (superRBTokens > 65 and totalStrength >= 5 * 10^24 and config.npc.name == "Noob" and BossProgress.kills.Noob >= 5)
+                                
+                                if isTargetBoss then
+                                    StatusParagraph:SetDesc("Performing rebirths before Super Rebirth...")
+                                    performRebirths(115)
+                                    wait(1)
+                                    
+                                    StatusParagraph:SetDesc("Executing Super Rebirth...")
+                                    ReplicatedStorage.Packages.Knit.Services.RebirthService.RE.onSuperRebirth:FireServer()
+                                    wait(1)
+                                    
+                                    StatusParagraph:SetDesc("Resetting progress...")
+                                    resetProgress()
+                                    
+                                    AutoGrindToggle:SetValue(false)
+                                    wait(3)
+                                    AutoGrindToggle:SetValue(true)
+                                end
+                            end
+                            wait(1)
+                        end
+                    end
+                else
+                    if config.npc.name == "Udzal" then
+                        local playerWins = LocalPlayer:GetAttribute("Wins") or 0
+                        local percentage = (playerWins / 5e25) * 100
+                        StatusParagraph:SetDesc(string.format("Training for Udzal - Wins Progress: %.2e/%.2e (%.2f%%)", 
+                            playerWins, 5e25, percentage))
+                    elseif config.npc.name == "Noob" and Variables.hasCompletedZone7Setup then
+                        StatusParagraph:SetDesc(string.format("Training for Noob - Current: %.2e / Need: %.2e",
+                            totalStrength, 5 * 10^24))
+                    else
+                        StatusParagraph:SetDesc(string.format("Training for %s - Current: %s / Need: %s", 
+                            config.npc.name, tostring(totalStrength), tostring(config.strength)))
+                    end
+                end
+                wait(0.5)
+            end
+        end)
+    else
+        Variables.isCurrentlyFighting = false
+        StatusParagraph:SetDesc("Stopped")
+    end
+end)
+        
+
+
+-- Update fetchTeamData function
+local function fetchTeamData()
+    if PetTeamServiceRF and PetTeamServiceRF:IsA("RemoteFunction") then
+        local success, data = pcall(function()
+            return PetTeamServiceRF:InvokeServer()
+        end)
+        
+        if success and type(data) == "table" then
+            teamData = {}
+            uniqueTeamNames = {}
+            
+            for teamName, teamInfo in pairs(data) do
+                -- Use teamName as the ID
+                teamData[teamInfo.Name] = {
+                    Id = teamName,
+                    Name = teamInfo.Name
+                }
+                if not table.find(uniqueTeamNames, teamInfo.Name) then
+                    table.insert(uniqueTeamNames, teamInfo.Name)
+                end
+            end
+            
+            table.sort(uniqueTeamNames)
+            StrengthTeamDropdown:SetValues(uniqueTeamNames)
+            WinsTeamDropdown:SetValues(uniqueTeamNames)
+            return true
+        end
+    end
+    return false   
+end
+
+
+spawn(function()
+    while wait(5) do
+        fetchTeamData()
+    end
+end)
+
+fetchTeamData()
