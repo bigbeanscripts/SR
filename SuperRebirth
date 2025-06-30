@@ -48,6 +48,9 @@ local currentBestZone = LocalPlayer:GetAttribute("BestZone") or 1
 -- Arm variables
 local bestFightingPercent = 0
 local bestTrainingMultiplier = 0
+local lastArmEquipTime = 0
+local trainingStartTime = 0
+local wasTrainingLastLoop = false
 local bestFightingArmId = nil
 local bestTrainingArmId = nil
 
@@ -58,6 +61,16 @@ end
 local function performSuperRebirth()
     game:GetService("ReplicatedStorage").Packages.Knit.Services.RebirthService.RE.onSuperRebirth:FireServer()
 end
+
+local function trail()    -- Function to handle trail purchase
+    local args = {
+        [1] = "Trails",
+        [2] = "Sparkle"
+    }
+    
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.PurchaseService.RE.onPurchaseRequest:FireServer(unpack(args))
+end
+
 
 local function getNextSRRequirements(currentSRLevel)
     local nextSRLevel = nil
@@ -87,7 +100,6 @@ end
 -- Function to equip strength team
 local function equipStrengthTeam()
     if selectedStrengthTeam and teamData[selectedStrengthTeam] then
-        print("Equipping strength team:", selectedStrengthTeam)
         local args = {
             [1] = teamData[selectedStrengthTeam].Id
         }
@@ -100,7 +112,6 @@ end
 -- Function to equip wins team
 local function equipWinsTeam()
     if selectedWinsTeam and teamData[selectedWinsTeam] then
-        print("Equipping wins team:", selectedWinsTeam)
         local args = {
             [1] = teamData[selectedWinsTeam].Id
         }
@@ -117,7 +128,7 @@ local bosses = {
     {Name = "Kraken", Strength = 1.557622475e+15 * 2, Zone = 3, GameName = "KrakenBoss"},
     {Name = "Mutant King", Strength = 1.2997e+17 * 2, Zone = 4, GameName = "MutantKing"},
     {Name = "Mammoth", Strength = 8.5e+17 * 2, Zone = 5, GameName = "Mammoth"},
-    {Name = "Cybernetic", Strength = 1e+21 * 2, Zone = 6, GameName = "Cybernetic"},
+    {Name = "Udzal", Strength = 1e+21 * 2, Zone = 6, GameName = "Udzal"},
     {Name = "Space Dog", Strength = 1.3e+24 * 2, Zone = 7, GameName = "SpaceDog"},
     {Name = "Undead Sparta", Strength = 1.5e+25 * 2, Zone = 8, GameName = "UndeadSparta"},
     {Name = "Evil Overseer", Strength = 2.3e+26 * 2, Zone = 9, GameName = "EvilOverseer"}
@@ -150,7 +161,6 @@ end
 -- Function to equip fighting arm
 local function equipFightingArm()
     if bestFightingArmId then
-        print("Equipping fighting arm with " .. bestFightingPercent .. "% chance")
         local args = { bestFightingArmId }
         pcall(function()
             game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmsService.RF.EquipArm:InvokeServer(unpack(args))
@@ -161,7 +171,6 @@ end
 -- Function to equip training arm
 local function equipTrainingArm()
     if bestTrainingArmId then
-        print("Equipping training arm with " .. bestTrainingMultiplier .. "x multiplier")
         local args = { bestTrainingArmId }
         pcall(function()
             game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmsService.RF.EquipArm:InvokeServer(unpack(args))
@@ -173,9 +182,6 @@ end
 local function fightBoss(zone, bossName)
     if isFighting then return end
     isFighting = true
-    
-    print("Fighting boss in zone " .. zone .. ": " .. bossName)
-    
     local args = {
         [1] = workspace.GameObjects.ArmWrestling:FindFirstChild(tostring(zone)).NPC[bossName]
     }
@@ -257,14 +263,12 @@ local WinsTeamDropdown = SuperRBSection:AddDropdown("WinsTeam", {
 StrengthTeamDropdown:OnChanged(function(value)
     selectedStrengthTeam = value
     if selectedStrengthTeam and teamData[selectedStrengthTeam] then
-        print("Selected Strength Team ID:", teamData[selectedStrengthTeam].Id)
     end
 end)
 
 WinsTeamDropdown:OnChanged(function(value)
     selectedWinsTeam = value
     if selectedWinsTeam and teamData[selectedWinsTeam] then
-        print("Selected Wins Team ID:", teamData[selectedWinsTeam].Id)
     end
 end)
 
@@ -452,7 +456,6 @@ end
 LocalPlayer:GetAttributeChangedSignal("BestZone"):Connect(function()
     local newBestZone = LocalPlayer:GetAttribute("BestZone")
     if newBestZone ~= currentBestZone then
-        print("Best zone changed from " .. currentBestZone .. " to " .. newBestZone)
         currentBestZone = newBestZone
         
         if SuperRBToggle.Value then
@@ -460,16 +463,13 @@ LocalPlayer:GetAttributeChangedSignal("BestZone"):Connect(function()
         end
     end
 end)
-
--- Main toggle handler with integrated boss fighting
 SuperRBToggle:OnChanged(function(enabled)
     if enabled then
         if not selectedStrengthTeam or not selectedWinsTeam then
-            print("Error: Please select both strength and wins teams!")
             SuperRBToggle:SetValue(false)
             return
         end
-        
+
         -- Auto-click when fighting
         spawn(function()
             while SuperRBToggle.Value do
@@ -482,7 +482,7 @@ SuperRBToggle:OnChanged(function(enabled)
             end
         end)
 
-        -- Rapid click loop
+        -- Rapid click loop (constant clicking)
         spawn(function()
             while SuperRBToggle.Value do
                 ToolService.onClick:FireServer()
@@ -490,7 +490,7 @@ SuperRBToggle:OnChanged(function(enabled)
             end
         end)
 
-        -- Equipment management
+        -- Equipment manager (updates every 5 seconds)
         spawn(function()
             while SuperRBToggle.Value do
                 local bestZone = player:GetAttribute("BestZone")
@@ -506,7 +506,7 @@ SuperRBToggle:OnChanged(function(enabled)
             end
         end)
 
-        -- Main automation loop
+        -- Super Rebirth Logic
         spawn(function()
             while SuperRBToggle.Value do
                 local rebirths = LocalPlayer:GetAttribute("Rebirths") or 0
@@ -514,72 +514,84 @@ SuperRBToggle:OnChanged(function(enabled)
                 local nextSRLevel, nextRebirthReq = getNextSRRequirements(superrb)
                 local bestZone = tonumber(LocalPlayer:GetAttribute("BestZone")) or 1
                 local boss = getBossForZone(bestZone)
-                
+
                 if nextSRLevel and nextRebirthReq then
                     local rebirthsNeeded = nextRebirthReq - rebirths
-                    
+
                     if rebirthsNeeded <= 0 then
-                        -- Can super rebirth now
-                        print("Performing super rebirth now!")
                         performSuperRebirth()
-                        wait(3)
                         currentPhase = "strength"
-                        task.wait(3)
-                    else
-                        -- Check if we can afford to reach the super rebirth requirement
-                        if canAffordSuperRebirth() then
-                            -- We have enough wins to reach super rebirth - start rapid rebirthing
-                            print("Can afford super rebirth! Starting rapid rebirths...")
-                            while SuperRBToggle.Value and rebirths < nextRebirthReq do
-                                local nextRebirthCost = RebirthRequirements[rebirths + 1]
-                                local currentWins = LocalPlayer:GetAttribute("Wins") or 0
-                                
-                                if nextRebirthCost and currentWins >= nextRebirthCost then
-                                    performRebirth()
-                                    print("Performed rebirth " .. (rebirths + 1) .. "/" .. nextRebirthReq)
-                                    task.wait(0.1)
-                                    rebirths = LocalPlayer:GetAttribute("Rebirths") or 0
-                                else
-                                    print("Not enough wins for rebirth, waiting...")
-                                    break
-                                end
-                            end
-                        else
-                            -- Don't have enough wins yet - check arm strategy
-                            if canBeatBossWithFightingArm() then
-                                -- Can beat boss with fighting arm - fight for wins
-                                print("Can beat boss with fighting arm! Fighting for wins...")
-                                equipWinsTeam()
-                                equipFightingArm()
-                                
-                                if not isFighting and tick() - lastFightTime > 3 then
-                                    fightBoss(bestZone, boss.GameName)
-                                    lastFightTime = tick()
-                                end
+                        task.wait(6)
+                        wasTrainingLastLoop = false
+                        trainingStartTime = 0
+                    elseif canAffordSuperRebirth() then
+                        while SuperRBToggle.Value and rebirths < nextRebirthReq do
+                            local nextRebirthCost = RebirthRequirements[rebirths + 1]
+                            local currentWins = LocalPlayer:GetAttribute("Wins") or 0
+
+                            if nextRebirthCost and currentWins >= nextRebirthCost then
+                                performRebirth()
+                                task.wait(0.1)
+                                rebirths = LocalPlayer:GetAttribute("Rebirths") or 0
                             else
-                                -- Cannot beat boss with fighting arm - train for strength
-                                print("Cannot beat boss with fighting arm, training for strength...")
-                                equipStrengthTeam()
-                                equipTrainingArm()
-                                
-                                if not isFighting and tick() - lastFightTime > 3 then
-                                    fightBoss(bestZone, boss.GameName)
-                                    lastFightTime = tick()
-                                end
+                                break
                             end
                         end
+                        wasTrainingLastLoop = false
+                        trainingStartTime = 0
+                    elseif canBeatBossWithFightingArm() then
+                        equipWinsTeam()
+
+                        if tick() - lastArmEquipTime > 3 then
+                            equipFightingArm()  -- Use fighting arm since we can beat the boss
+                            lastArmEquipTime = tick()
+                        end
+
+                        if not isFighting and tick() - lastFightTime > 3 then
+                            fightBoss(bestZone, boss.GameName)  -- Fight the boss for wins
+                            lastFightTime = tick()
+                        end
+
+                        wasTrainingLastLoop = false
+                        trainingStartTime = 0
+                    else
+                        equipStrengthTeam()
+
+                        if tick() - lastArmEquipTime > 3 then
+                            equipTrainingArm()  -- Use training arm to gain strength
+                            lastArmEquipTime = tick()
+                        end
+
+                        -- Begin or continue tracking training
+                        if not wasTrainingLastLoop then
+                            trainingStartTime = tick()
+                            wasTrainingLastLoop = true
+                        end
+
+                        -- If training for more than 10 seconds, force rebirth 60 times
+                        if tick() - trainingStartTime > 10 then
+                            for i = 1, 60 do
+                                performRebirth()
+                                task.wait(0.1)
+                                trail()
+                            end
+                            trainingStartTime = tick() -- restart timer to keep retrying
+                        end
+
+                        -- DON'T fight boss when training - just train with equipment
+                        -- if not isFighting and tick() - lastFightTime > 3 then
+                        --     fightBoss(bestZone, boss.GameName)  -- Fight the boss for training
+                        --     lastFightTime = tick()
+                        -- end
                     end
                 else
-                    print("Max super rebirth reached!")
                     break
                 end
-                
+
                 task.wait(1)
             end
         end)
-        
     else
-        stopAutoClick()
         isFighting = false
     end
 end)
@@ -588,7 +600,6 @@ end)
 LocalPlayer:GetAttributeChangedSignal("BossKills"):Connect(function()
     local newKills = LocalPlayer:GetAttribute("BossKills")
     if newKills > previousKills then
-        print("Won fight! Boss kills: " .. newKills)
         isFighting = false
         stopAutoClick()
         task.wait(2)
@@ -775,7 +786,7 @@ while true do
         nextGoalText = ""
     end
 
-    local canAfford = canAffordSuperRebirth() and "YES" or "NO"
+    local canAfford = canAffordSuperRebirth() and "Yes" or "No"
     local canBeatWithFighting = canBeatBossWithFightingArm() and "Yes" or "No"
     local currentStrategy = canBeatWithFighting == "Yes" and "Fighting (Wins)" or "Training (Strength)"
 
@@ -792,7 +803,7 @@ while true do
         bossText .. "\n" ..
         nextGoalText .. "\n\n" ..
         "Can Afford Super Rebirth: " .. canAfford .. "\n" ..
-        "Can Beat Boss w/ Fighting: " .. canBeatWithFighting .. "\n" ..
+        "Can Beat Boss with Fighting Arm: " .. canBeatWithFighting .. "\n" ..
         "Current Strategy: " .. currentStrategy .. "\n" ..
         "Fighting: " .. tostring(isFighting)
 
