@@ -45,6 +45,12 @@ local isFighting = false
 -- Zone tracking
 local currentBestZone = LocalPlayer:GetAttribute("BestZone") or 1
 
+-- Arm variables
+local bestFightingPercent = 0
+local bestTrainingMultiplier = 0
+local bestFightingArmId = nil
+local bestTrainingArmId = nil
+
 local function performRebirth()
     ReplicatedStorage.Packages.Knit.Services.RebirthService.RE.onRebirthRequest:FireServer()
 end
@@ -127,8 +133,8 @@ local function getBossForZone(zone)
     return bosses[1] -- Default to Champion
 end
 
--- Function to check if player can beat boss in best zone
-local function canBeatBossInBestZone()
+-- Function to check if player can beat boss with fighting arm
+local function canBeatBossWithFightingArm()
     local bestZone = tonumber(LocalPlayer:GetAttribute("BestZone")) or 1
     local handStrength = tonumber(LocalPlayer:GetAttribute("HandStrength")) or 0
     local knuckleStrength = tonumber(LocalPlayer:GetAttribute("KnuckleStrength")) or 0
@@ -136,10 +142,34 @@ local function canBeatBossInBestZone()
     local totalStrength = handStrength + knuckleStrength + bicepPower
     
     local boss = getBossForZone(bestZone)
-    return totalStrength >= boss.Strength
+    local requiredStrength = boss.Strength / (bestFightingPercent / 100)
+    
+    return totalStrength >= requiredStrength and bestFightingPercent > 0
 end
 
--- Function to fight boss in specific zone - FIXED
+-- Function to equip fighting arm
+local function equipFightingArm()
+    if bestFightingArmId then
+        print("Equipping fighting arm with " .. bestFightingPercent .. "% chance")
+        local args = { bestFightingArmId }
+        pcall(function()
+            game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmsService.RF.EquipArm:InvokeServer(unpack(args))
+        end)
+    end
+end
+
+-- Function to equip training arm
+local function equipTrainingArm()
+    if bestTrainingArmId then
+        print("Equipping training arm with " .. bestTrainingMultiplier .. "x multiplier")
+        local args = { bestTrainingArmId }
+        pcall(function()
+            game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmsService.RF.EquipArm:InvokeServer(unpack(args))
+        end)
+    end
+end
+
+-- Function to fight boss in specific zone
 local function fightBoss(zone, bossName)
     if isFighting then return end
     isFighting = true
@@ -169,7 +199,7 @@ local function startAutoClick()
     
     -- Start new auto click threads
     task.spawn(function()
-        for i = 1, 50 do -- Reduced from 150 to prevent lag
+        for i = 1, 50 do
             local threadData = { active = true }
             table.insert(autoClickThreads, threadData)
             
@@ -179,7 +209,7 @@ local function startAutoClick()
                         ArmwrestleServiceRF.RequestClick:InvokeServer()
                         ArmwrestleServiceRF.RequestCritHit:InvokeServer()
                     end)
-                    task.wait(0.01)  -- Fast clicking
+                    task.wait(0.01)
                 end
             end)
             
@@ -389,7 +419,7 @@ local function GetHighestEquipment(player, equipmentType)
 end
 
 -- Variables for the super rebirth logic
-local currentPhase = "strength" -- "strength" or "wins"
+local currentPhase = "strength"
 local previousKills = LocalPlayer:GetAttribute("BossKills") or 0
 local lastFightTime = 0
 
@@ -411,21 +441,20 @@ local function canAffordSuperRebirth()
         if cost then
             totalWinsNeeded = totalWinsNeeded + cost
         else
-            return false -- If we can't find the cost, we can't afford it
+            return false
         end
     end
     
     return currentWins >= totalWinsNeeded
 end
 
--- ADDED: Listen for BestZone changes and teleport accordingly
+-- Listen for BestZone changes and teleport accordingly
 LocalPlayer:GetAttributeChangedSignal("BestZone"):Connect(function()
     local newBestZone = LocalPlayer:GetAttribute("BestZone")
     if newBestZone ~= currentBestZone then
         print("Best zone changed from " .. currentBestZone .. " to " .. newBestZone)
         currentBestZone = newBestZone
         
-        -- Only teleport if Super Rebirth toggle is enabled
         if SuperRBToggle.Value then
             teleportToZone(newBestZone)
         end
@@ -453,7 +482,7 @@ SuperRBToggle:OnChanged(function(enabled)
             end
         end)
 
-        -- Rapid click loop (unchanged)
+        -- Rapid click loop
         spawn(function()
             while SuperRBToggle.Value do
                 ToolService.onClick:FireServer()
@@ -477,7 +506,7 @@ SuperRBToggle:OnChanged(function(enabled)
             end
         end)
 
-        -- Main automation loop - MODIFIED
+        -- Main automation loop
         spawn(function()
             while SuperRBToggle.Value do
                 local rebirths = LocalPlayer:GetAttribute("Rebirths") or 0
@@ -494,7 +523,7 @@ SuperRBToggle:OnChanged(function(enabled)
                         print("Performing super rebirth now!")
                         performSuperRebirth()
                         wait(3)
-                        currentPhase = "strength" -- Reset to strength phase after super rebirth
+                        currentPhase = "strength"
                         task.wait(3)
                     else
                         -- Check if we can afford to reach the super rebirth requirement
@@ -508,28 +537,30 @@ SuperRBToggle:OnChanged(function(enabled)
                                 if nextRebirthCost and currentWins >= nextRebirthCost then
                                     performRebirth()
                                     print("Performed rebirth " .. (rebirths + 1) .. "/" .. nextRebirthReq)
-                                    task.wait(0.1) -- Rebirth every 0.1 second
-                                    rebirths = LocalPlayer:GetAttribute("Rebirths") or 0 -- Update rebirths count
+                                    task.wait(0.1)
+                                    rebirths = LocalPlayer:GetAttribute("Rebirths") or 0
                                 else
                                     print("Not enough wins for rebirth, waiting...")
                                     break
                                 end
                             end
                         else
-                            -- Don't have enough wins yet - focus on fighting if we can beat the boss
-                            if canBeatBossInBestZone() then
-                                -- Fight the boss for wins
+                            -- Don't have enough wins yet - check arm strategy
+                            if canBeatBossWithFightingArm() then
+                                -- Can beat boss with fighting arm - fight for wins
+                                print("Can beat boss with fighting arm! Fighting for wins...")
                                 equipWinsTeam()
-                                -- Don't teleport here - only teleport when BestZone changes
+                                equipFightingArm()
                                 
                                 if not isFighting and tick() - lastFightTime > 3 then
                                     fightBoss(bestZone, boss.GameName)
                                     lastFightTime = tick()
                                 end
                             else
-                                -- Train for strength first
+                                -- Cannot beat boss with fighting arm - train for strength
+                                print("Cannot beat boss with fighting arm, training for strength...")
                                 equipStrengthTeam()
-                                -- Don't teleport here - only teleport when BestZone changes
+                                equipTrainingArm()
                                 
                                 if not isFighting and tick() - lastFightTime > 3 then
                                     fightBoss(bestZone, boss.GameName)
@@ -548,7 +579,6 @@ SuperRBToggle:OnChanged(function(enabled)
         end)
         
     else
-        -- Stop auto-clicking when toggle is disabled
         stopAutoClick()
         isFighting = false
     end
@@ -561,24 +591,22 @@ LocalPlayer:GetAttributeChangedSignal("BossKills"):Connect(function()
         print("Won fight! Boss kills: " .. newKills)
         isFighting = false
         stopAutoClick()
-        task.wait(2) -- Brief pause between fights
+        task.wait(2)
     end
     previousKills = newKills
 end)
 
--- Rest of your existing code (PlayerInfo display, etc.)
 local armsFolder = playerGui:WaitForChild("GameUI")
     :WaitForChild("Menus")
     :WaitForChild("Arms")
     :WaitForChild("Container")
     :WaitForChild("Arms")
 
-local highestPercent = 0
-local highestX = 0
-
 local function checkHighestArmsStats()
-    local newHighestPercent = highestPercent
-    local newHighestX = highestX
+    local newHighestPercent = bestFightingPercent
+    local newHighestX = bestTrainingMultiplier
+    local newFightingArmId = bestFightingArmId
+    local newTrainingArmId = bestTrainingArmId
 
     for _, arm in pairs(armsFolder:GetChildren()) do
         if arm:IsA("GuiObject") and arm.Name ~= "Squiggle" then
@@ -592,6 +620,7 @@ local function checkHighestArmsStats()
                         local percentValue = tonumber(percentStr)
                         if percentValue and percentValue > newHighestPercent then
                             newHighestPercent = percentValue
+                            newFightingArmId = arm.Name
                         end
                     end
                     local xStr = text:match("([%d%.]+)x")
@@ -599,6 +628,7 @@ local function checkHighestArmsStats()
                         local xValue = tonumber(xStr)
                         if xValue and xValue > newHighestX then
                             newHighestX = xValue
+                            newTrainingArmId = arm.Name
                         end
                     end
                 end
@@ -606,11 +636,13 @@ local function checkHighestArmsStats()
         end
     end
 
-    if newHighestPercent > highestPercent then
-        highestPercent = newHighestPercent
+    if newHighestPercent > bestFightingPercent then
+        bestFightingPercent = newHighestPercent
+        bestFightingArmId = newFightingArmId
     end
-    if newHighestX > highestX then
-        highestX = newHighestX
+    if newHighestX > bestTrainingMultiplier then
+        bestTrainingMultiplier = newHighestX
+        bestTrainingArmId = newTrainingArmId
     end
 end
 
@@ -744,7 +776,8 @@ while true do
     end
 
     local canAfford = canAffordSuperRebirth() and "YES" or "NO"
-    local canBeat = canBeatBossInBestZone() and "YES" or "NO"
+    local canBeatWithFighting = canBeatBossWithFightingArm() and "Yes" or "No"
+    local currentStrategy = canBeatWithFighting == "Yes" and "Fighting (Wins)" or "Training (Strength)"
 
     local content = 
         "Strength: " .. formatNumber(totalStrength) .. "\n" ..
@@ -753,13 +786,14 @@ while true do
         nextZoneText .. "\n" ..
         "Rebirths: " .. formatNumber(rebirths) .. "\n" ..
         "Super Rebirths: " .. formatNumber(superrb) .. "\n" ..
-        "Best Fighting Arm: " .. tostring(highestPercent) .. "%\n" ..
-        "Best Training Arm: " .. formatMultiplier(highestX) .. "x\n" ..
+        "Best Fighting Arm: " .. tostring(bestFightingPercent) .. "%\n" ..
+        "Best Training Arm: " .. formatMultiplier(bestTrainingMultiplier) .. "x\n" ..
         nextSRText .. "\n\n" ..
         bossText .. "\n" ..
         nextGoalText .. "\n\n" ..
         "Can Afford Super Rebirth: " .. canAfford .. "\n" ..
-        "Can Beat Boss: " .. canBeat .. "\n" ..
+        "Can Beat Boss w/ Fighting: " .. canBeatWithFighting .. "\n" ..
+        "Current Strategy: " .. currentStrategy .. "\n" ..
         "Fighting: " .. tostring(isFighting)
 
     PlayerInfoParagraph:SetContent(content)
