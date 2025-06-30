@@ -144,18 +144,55 @@ local function getBossForZone(zone)
     return bosses[1] -- Default to Champion
 end
 
+-- Function to calculate the strength multiplier from the best fighting arm
+local function calculateStrengthMultiplier()
+    local bestFightingPercent = 0
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    local armsFolder = playerGui:WaitForChild("GameUI")
+        :WaitForChild("Menus")
+        :WaitForChild("Arms")
+        :WaitForChild("Container")
+        :WaitForChild("Arms")
+
+    -- Check if armsFolder exists, wait if it doesn't
+    if not armsFolder then
+        warn("Arms folder not found.  Waiting...")
+        armsFolder = playerGui:WaitForChild("GameUI"):WaitForChild("Menus"):WaitForChild("Arms"):WaitForChild("Container"):WaitForChild("Arms")
+        if not armsFolder then --still doesnt exist abort function
+            warn("Arms folder still not found, aborting calculation.")
+            return nil
+        end
+    end
+
+    for _, arm in pairs(armsFolder:GetChildren()) do
+        if arm:IsA("GuiObject") and arm.Name ~= "Squiggle" then
+            local toggle = arm:FindFirstChild("Toggle")
+            if toggle then
+                local stat = toggle:FindFirstChild("Stat")
+                if stat and stat:IsA("GuiObject") then
+                    local text = stat.Text
+                    local percentStr = text:match("(%d+)%%")
+                    if percentStr then
+                        local percentValue = tonumber(percentStr)
+                        if percentValue > bestFightingPercent then
+                            bestFightingPercent = percentValue
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Calculate the multiplier:
+    local multiplier = 1 + ((bestFightingPercent or 0) / 100)
+
+    return multiplier,  bestFightingPercent -- Return both multiplier and percent
+end
+
 -- Function to check if player can beat boss with fighting arm
-local function canBeatBossWithFightingArm()
-    local bestZone = tonumber(LocalPlayer:GetAttribute("BestZone")) or 1
-    local handStrength = tonumber(LocalPlayer:GetAttribute("HandStrength")) or 0
-    local knuckleStrength = tonumber(LocalPlayer:GetAttribute("KnuckleStrength")) or 0
-    local bicepPower = tonumber(LocalPlayer:GetAttribute("BicepPower")) or 0
-    local totalStrength = handStrength + knuckleStrength + bicepPower
-    
-    local boss = getBossForZone(bestZone)
-    local requiredStrength = boss.Strength / (bestFightingPercent / 100)
-    
-    return totalStrength >= requiredStrength and bestFightingPercent > 0
+local function canBeatBossWithFightingArm(totalStrength, multiplier, bossStrength)
+    local effectiveStrength = totalStrength * multiplier
+    return effectiveStrength >= bossStrength
 end
 
 -- Function to equip fighting arm
@@ -515,6 +552,19 @@ SuperRBToggle:OnChanged(function(enabled)
                 local bestZone = tonumber(LocalPlayer:GetAttribute("BestZone")) or 1
                 local boss = getBossForZone(bestZone)
 
+                -- Calculate the strength multiplier and bestFightingPercent
+                local multiplier, bestFightingPercent = calculateStrengthMultiplier()
+                 if not multiplier then
+                    warn("Could not calculate strength multipler, check arm stats.")
+                    break -- stop script if can't calculate
+                end
+
+                -- Get total strength
+                local handStrength = tonumber(LocalPlayer:GetAttribute("HandStrength")) or 0
+                local knuckleStrength = tonumber(LocalPlayer:GetAttribute("KnuckleStrength")) or 0
+                local bicepPower = tonumber(LocalPlayer:GetAttribute("BicepPower")) or 0
+                local totalStrength = handStrength + knuckleStrength + bicepPower
+                
                 if nextSRLevel and nextRebirthReq then
                     local rebirthsNeeded = nextRebirthReq - rebirths
 
@@ -539,7 +589,7 @@ SuperRBToggle:OnChanged(function(enabled)
                         end
                         wasTrainingLastLoop = false
                         trainingStartTime = 0
-                    elseif canBeatBossWithFightingArm() then
+                    elseif canBeatBossWithFightingArm(totalStrength, multiplier, boss.Strength) then
                         equipWinsTeam()
 
                         if tick() - lastArmEquipTime > 3 then
@@ -706,15 +756,16 @@ checkHighestArmsStats()
 local timeSinceLastCheck = 0
 
 while true do
+    -- Get total strength
     local handStrength = tonumber(LocalPlayer:GetAttribute("HandStrength")) or 0
     local knuckleStrength = tonumber(LocalPlayer:GetAttribute("KnuckleStrength")) or 0
     local bicepPower = tonumber(LocalPlayer:GetAttribute("BicepPower")) or 0
+    local totalStrength = handStrength + knuckleStrength + bicepPower
+
     local wins = tonumber(LocalPlayer:GetAttribute("Wins")) or 0
     local zone = tonumber(LocalPlayer:GetAttribute("BestZone")) or 1
     local rebirths = tonumber(LocalPlayer:GetAttribute("Rebirths")) or 0
     local superrb = tonumber(LocalPlayer:GetAttribute("SuperRBTokens")) or 0
-
-    local totalStrength = handStrength + knuckleStrength + bicepPower
 
     timeSinceLastCheck = timeSinceLastCheck + 1
     if timeSinceLastCheck >= 20 then
@@ -769,45 +820,50 @@ while true do
     local bossText = ""
     local nextGoalText = ""
 
-    if boss then
-        local numericStrength = tonumber(totalStrength) or 0
-        local bossStrength = tonumber(boss.Strength) or 0
-
-        if numericStrength >= bossStrength then
-            bossText = "You can beat: " .. boss.Name
-            nextGoalText = ""
-        else
-            local strengthNeeded = bossStrength - numericStrength
-            bossText = "Training to beat: " .. boss.Name
-            nextGoalText = "(Need " .. formatNumber(strengthNeeded) .. " more strength)"
-        end
+    -- Calculate the strength multiplier and bestFightingPercent
+    local multiplier, bestFightingPercent = calculateStrengthMultiplier()
+    if not multiplier then
+        warn("Could not calculate strength multipler, check arm stats.")
     else
-        bossText = "You can beat: None"
-        nextGoalText = ""
+      local canBeat = canBeatBossWithFightingArm(totalStrength, multiplier, boss.Strength)
+
+        if boss then
+            local effectiveStrength = totalStrength * multiplier
+            if canBeat then
+                bossText = "You can beat: " .. boss.Name
+                nextGoalText = ""
+            else
+                -- Calculate the strength needed WITHOUT the fighting arm bonus
+                local strengthNeeded = boss.Strength - effectiveStrength
+                bossText = "Training to beat: " .. boss.Name
+                nextGoalText = "(Need " .. formatNumber(strengthNeeded) .. " more strength with fighting arm)"
+            end
+        else
+            bossText = "You can beat: None"
+            nextGoalText = ""
+        end
+        local canBeatWithFighting = canBeatBossWithFightingArm(totalStrength, multiplier, boss.Strength) and "Yes" or "No"
+         local currentStrategy = canBeatWithFighting == "Yes" and "Fighting (Wins)" or "Training (Strength)"
+                local canAfford = canAffordSuperRebirth() and "Yes" or "No"
+
+        local content =
+            "Strength: " .. formatNumber(totalStrength) .. "\n" ..
+            "Wins: " .. formatNumber(wins) .. "\n" ..
+            "Zone: " .. tostring(zone) .. "\n" ..
+            nextZoneText .. "\n" ..
+            "Rebirths: " .. formatNumber(rebirths) .. "\n" ..
+            "Super Rebirths: " .. formatNumber(superrb) .. "\n" ..
+            "Best Fighting Arm: " .. tostring(bestFightingPercent) .. "%\n" ..
+            "Best Training Arm: " .. formatMultiplier(bestTrainingMultiplier) .. "x\n" ..
+            nextSRText .. "\n\n" ..
+            bossText .. "\n" ..
+            nextGoalText .. "\n\n" ..
+            "Can Afford Super Rebirth: " .. canAfford .. "\n" ..
+            "Can Beat Boss with Fighting Arm: " .. canBeatWithFighting .. "\n" ..
+            "Current Strategy: " .. currentStrategy .. "\n" ..
+            "Fighting: " .. tostring(isFighting)
+
+        PlayerInfoParagraph:SetContent(content)
     end
-
-    local canAfford = canAffordSuperRebirth() and "Yes" or "No"
-    local canBeatWithFighting = canBeatBossWithFightingArm() and "Yes" or "No"
-    local currentStrategy = canBeatWithFighting == "Yes" and "Fighting (Wins)" or "Training (Strength)"
-
-    local content = 
-        "Strength: " .. formatNumber(totalStrength) .. "\n" ..
-        "Wins: " .. formatNumber(wins) .. "\n" ..
-        "Zone: " .. tostring(zone) .. "\n" ..
-        nextZoneText .. "\n" ..
-        "Rebirths: " .. formatNumber(rebirths) .. "\n" ..
-        "Super Rebirths: " .. formatNumber(superrb) .. "\n" ..
-        "Best Fighting Arm: " .. tostring(bestFightingPercent) .. "%\n" ..
-        "Best Training Arm: " .. formatMultiplier(bestTrainingMultiplier) .. "x\n" ..
-        nextSRText .. "\n\n" ..
-        bossText .. "\n" ..
-        nextGoalText .. "\n\n" ..
-        "Can Afford Super Rebirth: " .. canAfford .. "\n" ..
-        "Can Beat Boss with Fighting Arm: " .. canBeatWithFighting .. "\n" ..
-        "Current Strategy: " .. currentStrategy .. "\n" ..
-        "Fighting: " .. tostring(isFighting)
-
-    PlayerInfoParagraph:SetContent(content)
-
     wait(1)
 end
