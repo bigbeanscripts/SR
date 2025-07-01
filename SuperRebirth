@@ -550,6 +550,17 @@
              end
          end)
 
+        spawn(function()
+            while SuperRBToggle.Value do
+                task.wait(300) -- 5 minutes = 300 seconds
+                SuperRBToggle:SetValue(false)
+                task.wait(1)
+                SuperRBToggle:SetValue(true)
+                task.wait(1)
+                SuperRBToggle:SetValue(true)
+            end
+        end)
+
          -- Equipment manager (updates every 5 seconds)
          spawn(function()
              while SuperRBToggle.Value do
