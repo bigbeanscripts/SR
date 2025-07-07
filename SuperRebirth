@@ -217,16 +217,28 @@
 
  -- Function to fight boss in specific zone
  local function fightBoss(zone, bossName)
-     if isFighting then return end
-     isFighting = true
-     local args = {
-         [1] = workspace.GameObjects.ArmWrestling:FindFirstChild(tostring(zone)).NPC[bossName]
-     }
-     
-     pcall(function()
-         game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RF.RequestStartFight:InvokeServer(unpack(args))
-     end)
+    if isFighting then return end
+    
+    -- Check if player is in the correct zone before fighting
+    local currentZone = LocalPlayer:GetAttribute("CurrentZone") or 1
+    if currentZone ~= zone then
+        teleportToZone(zone)
+        task.wait(2) -- Wait for teleport to complete
+    end
+    
+    isFighting = true
+    lastFightTime = tick() -- Track when fight started
+    
+    local args = {
+        bossName
+    }
+    
+    pcall(function()
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RF.RequestStartFight:InvokeServer(unpack(args))
+    end)
  end
+
+
 
  -- Auto Click function for when in fight
  local function startAutoClick()
@@ -242,7 +254,7 @@
      
      -- Start new auto click threads
      task.spawn(function()
-         for i = 1, 50 do
+         for i = 1, 20 do
              local threadData = { active = true }
              table.insert(autoClickThreads, threadData)
              
@@ -256,7 +268,7 @@
                  end
              end)
              
-             task.wait(0.01)
+             task.wait(0.1)
          end
      end)
  end
@@ -377,7 +389,7 @@
 
  local SuperRBToggle = SuperRBSection:AddToggle("Super Rebirth", {
      Title = "Super Rebirth",
-     Description = "Automatically perform super rebirths. This does everything for you, but you must have teams selected, and both a training and fighting arm.",
+     Description = "Automatically perform super rebirths. This does everything for you, but you must have teams selected, and both a training and fighting arm. If you are constantly teleporting, the script will continue to work - so don't worry.",
      Default = false
  })
 
@@ -512,16 +524,7 @@
      return currentWins >= totalWinsNeeded
  end
 
- -- Listen for BestZone changes and teleport accordingly
- -- No longer teleport based on attribute.  Wins determine your zone.
---[[LocalPlayer:GetAttributeChangedSignal("BestZone"):Connect(function()
-     local newBestZone = LocalPlayer:GetAttribute("BestZone")
-    
-    -- Teleport only if SuperRBToggle is enabled
-     if SuperRBToggle.Value then
-         teleportToZone(newBestZone)
-     end
- end)]]
+
 
  SuperRBToggle:OnChanged(function(enabled)
      if enabled then
@@ -550,9 +553,9 @@
              end
          end)
 
-        spawn(function()
+         spawn(function()
             while SuperRBToggle.Value do
-                task.wait(300) -- 5 minutes = 300 seconds
+                task.wait(60) -- 1 minute
                 SuperRBToggle:SetValue(false)
                 task.wait(1)
                 SuperRBToggle:SetValue(true)
@@ -586,12 +589,18 @@
                  local rebirths = LocalPlayer:GetAttribute("Rebirths") or 0
                  local superrb = LocalPlayer:GetAttribute("SuperRBTokens") or 0
                  local nextSRLevel, nextRebirthReq = getNextSRRequirements(superrb)
+                 
+                -- Inside the Super Rebirth Logic loop (around line 520)
+                local wins = player:GetAttribute("Wins") or 0
+                -- Determine zone based on wins
+                local zone = GetZoneFromWins(wins)
 
-                 local wins = player:GetAttribute("Wins") or 0
-                 -- Determine zone based on wins
-                 local zone = GetZoneFromWins(wins)
-                      -- Teleport to the zone based on wins
-                  teleportToZone(zone)
+                -- Only teleport if the current zone is different from where we should be
+                local currentZone = LocalPlayer:GetAttribute("CurrentZone") or 1
+                if currentZone ~= zone then
+                    teleportToZone(zone)
+                    task.wait(2) -- Wait for teleport to complete
+                end
 
                  local boss = getBossForZone(zone)
 
@@ -682,16 +691,24 @@
      end
  end)
 
- -- Listen for boss kill changes
- LocalPlayer:GetAttributeChangedSignal("BossKills"):Connect(function()
-     local newKills = LocalPlayer:GetAttribute("BossKills")
-     if newKills > previousKills then
-         isFighting = false
-         stopAutoClick()
-         task.wait(2)
-     end
-     previousKills = newKills
- end)
+-- Listen for boss kill changes
+LocalPlayer:GetAttributeChangedSignal("BossKills"):Connect(function()
+    local newKills = LocalPlayer:GetAttribute("BossKills")
+    if newKills > previousKills then
+        isFighting = false
+        stopAutoClick()
+        task.wait(0.5) -- Reduced from 2 seconds to 0.5 seconds
+    end
+    previousKills = newKills
+end)
+
+-- Add this near where you have other event handlers
+-- Listen for zone changes to reset fighting status
+LocalPlayer:GetAttributeChangedSignal("CurrentZone"):Connect(function()
+    if isFighting then
+        isFighting = false
+    end
+end)
 
  local armsFolder = playerGui:WaitForChild("GameUI")
      :WaitForChild("Menus")
